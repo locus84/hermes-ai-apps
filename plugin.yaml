@@ -1,0 +1,5 @@
+name: ai-apps
+version: 1.0.0
+description: "AI Apps dashboard plugin with a companion skill for creating static and serverless mini apps."
+author: "Hermes Agent"
+kind: dashboard
