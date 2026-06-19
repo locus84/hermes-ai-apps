@@ -1,0 +1,14 @@
+{
+  "guid": "sample-rpc",
+  "type": "app",
+  "title": "Sample RPC App",
+  "description": "A static app that calls per-app Python serverless functions through the AI Apps iframe bridge.",
+  "created_at": "2026-06-19T02:45:00Z",
+  "author": "hermes-agent",
+  "entry": "index.html",
+  "server": {
+    "type": "python-rpc",
+    "entry": "server.py"
+  },
+  "tags": ["sample", "app", "rpc", "serverless"]
+}

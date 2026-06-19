@@ -1,0 +1,14 @@
+{
+  "name": "ai-apps",
+  "label": "AI Apps",
+  "description": "Named app-in-app gallery for AI-generated static and serverless mini apps",
+  "icon": "Sparkles",
+  "version": "1.0.0",
+  "tab": {
+    "path": "/ai-apps",
+    "position": "end"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}

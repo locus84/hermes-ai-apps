@@ -1,0 +1,13 @@
+{
+  "guid": "sample-183f859d",
+  "title": "AI Apps Sample",
+  "description": "A sample static artifact proving the AI Apps scanner and iframe preview path.",
+  "created_at": "2026-06-19T02:25:37.139141+00:00",
+  "author": "hermes-agent",
+  "entry": "index.html",
+  "tags": [
+    "sample",
+    "static-ui",
+    "ai-apps"
+  ]
+}
