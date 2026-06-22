@@ -238,13 +238,17 @@ Dashboard gallery:
 http://127.0.0.1:9119/ai-apps
 ```
 
-Direct static full view, with same-origin RPC fallback when `server.py` exists:
+Direct standalone full view, with same-origin RPC fallback when `server.py` exists:
 
 ```text
+# plugin-bundled apps under ~/.hermes/plugins/ai-apps/dashboard/dist/apps
+http://127.0.0.1:9119/dashboard-plugins/ai-apps/dist/apps/<app-name>/index.html
+
+# external user apps under ~/.hermes/ai-apps/apps (requires the dashboard session cookie)
 http://127.0.0.1:9119/api/plugins/ai-apps/static/apps/<app-name>/index.html
 ```
 
-Dashboard-hosted preview/full route also works and keeps the parent bridge:
+The dashboard `view=full` route is only a compatibility/deep-link entry point and should redirect to the app's standalone URL instead of rendering a dashboard iframe:
 
 ```text
 http://127.0.0.1:9119/ai-apps?item=<app-name>&view=full
@@ -259,4 +263,6 @@ If the dashboard is running on a different host/port, replace `http://127.0.0.1:
 - When verifying plugin API changes outside the dashboard process, use the Hermes runtime Python (`~/.hermes/hermes-agent/venv/bin/python`) so FastAPI and Hermes dependencies are available. If importing `plugin_api.py` via `importlib.util.spec_from_file_location`, insert the module into `sys.modules[spec.name]` before `exec_module`; dataclasses used by `plugin_api.py` expect their module to be registered.
 - After restart, a direct unauthenticated `curl` to `/api/plugins/ai-apps/...` may return `401` because dashboard plugin APIs are session-protected. Treat `lsof`/process readiness and browser-authenticated dashboard checks as the health signal; do not mistake unauthenticated `401` for plugin startup failure.
 - The dashboard iframe uses a sandbox. Build apps that work as standalone static pages; apps that need backend logic should use the postMessage RPC bridge.
+- Current standalone full-view implementation is core-free: `dashboard/dist/index.js` mirrors `window.__HERMES_SESSION_TOKEN__` into AI Apps localStorage and handles `/ai-apps?auth=1&return=<same-origin-app-url>` by immediately `location.replace`ing back; `dashboard/dist/app-bridge.js` first tries a silent same-origin `fetch('/ai-apps?auth=1&probe=1')`, parses the injected `window.__HERMES_SESSION_TOKEN__` from the returned HTML without navigating, caches it, registers `dashboard/dist/ai-apps-sw.js`, sends it the cached token, adds `X-Hermes-Session-Token` on direct RPC fetches, and only falls back to visible `/ai-apps` bounce on 401. `plugin_api.py` mirrors user-app static files (excluding `server.py`, `data`, dotfiles, `__pycache__`) into `dashboard/dist/user-apps/<app>/` so user apps also get public `/dashboard-plugins/...` bookmark URLs while RPC still resolves against the original user app root.
+- For standalone full-view deployment without Hermes core changes, including Service Worker header injection, preauth/auth-bounce launcher links, cached dashboard session tokens, stable bookmark/share-link shape, and why `/dashboard-plugins/...` cannot directly run RPC today, see `references/standalone-fullview-auth-patterns.md`.
 - For RPC troubleshooting, obsolete bridge protocol migration, and context compatibility details, see `references/ai-apps-rpc-debugging.md`.

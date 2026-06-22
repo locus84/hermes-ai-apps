@@ -24,6 +24,7 @@ APPS_DIR = DIST_DIR / "apps"
 ARCHIVE_DIR = DIST_DIR / "archive"
 ARCHIVE_APPS_DIR = ARCHIVE_DIR / "apps"
 ARCHIVE_SESSIONS_DIR = ARCHIVE_DIR / "sessions"
+PUBLIC_USER_APPS_DIR = DIST_DIR / "user-apps"
 HERMES_HOME = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes")).expanduser()
 USER_APPS_DIR = HERMES_HOME / "ai-apps" / "apps"
 USER_ARCHIVE_APPS_DIR = HERMES_HOME / "ai-apps" / "archive" / "apps"
@@ -106,6 +107,51 @@ def _safe_file_in_dir(base: Path, file_path: str) -> Path:
     return target
 
 
+def _copy_public_app_file(source: Path, target: Path) -> None:
+    if source.name == "server.py" or source.name.startswith("."):
+        return
+    if source.name in {"__pycache__", "data"}:
+        return
+    if source.is_dir():
+        if source.name.startswith("."):
+            return
+        target.mkdir(parents=True, exist_ok=True)
+        for child in source.iterdir():
+            _copy_public_app_file(child, target / child.name)
+        return
+    if not source.is_file():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+
+
+def _sync_public_user_app_mirror(app_dir: Path) -> Path | None:
+    """Mirror user app static files into plugin public static space.
+
+    Core only serves `/dashboard-plugins/ai-apps/dist/...` as unauthenticated
+    static files. User apps live outside the plugin directory, so standalone
+    bookmark URLs need a public static mirror while RPC still resolves against
+    the original allowlisted user app root. Backend files and app data are not
+    copied into the public mirror.
+    """
+    if not app_dir.exists() or not app_dir.is_dir():
+        return None
+    mirror = (PUBLIC_USER_APPS_DIR / app_dir.name).resolve()
+    try:
+        mirror.relative_to(PUBLIC_USER_APPS_DIR.resolve())
+    except ValueError:
+        return None
+    try:
+        if mirror.exists():
+            shutil.rmtree(mirror)
+        mirror.mkdir(parents=True, exist_ok=True)
+        for child in app_dir.iterdir():
+            _copy_public_app_file(child, mirror / child.name)
+        return mirror
+    except OSError:
+        return None
+
+
 def _artifact_item(path: Path, *, kind: str, url_collection: str | None = None, source: str = "plugin") -> dict[str, Any] | None:
     if not path.is_dir():
         return None
@@ -131,6 +177,18 @@ def _artifact_item(path: Path, *, kind: str, url_collection: str | None = None, 
     if not isinstance(tags, list):
         tags = []
 
+    if kind == "app" and source == "plugin":
+        url = f"/dashboard-plugins/{PLUGIN_NAME}/dist/{url_collection or 'apps'}/{guid}/{entry}"
+    elif kind == "app":
+        mirror = _sync_public_user_app_mirror(path) if not url_collection or url_collection == "apps" else None
+        if mirror and (mirror / entry).exists():
+            url = f"/dashboard-plugins/{PLUGIN_NAME}/dist/user-apps/{guid}/{entry}"
+        else:
+            static_collection = "archive/apps" if url_collection == "archive/apps" else "apps"
+            url = f"/api/plugins/{PLUGIN_NAME}/static/{static_collection}/{guid}/{entry}"
+    else:
+        url = f"/dashboard-plugins/{PLUGIN_NAME}/dist/{url_collection or 'sessions'}/{guid}/{entry}"
+
     item = {
         "guid": str(meta.get("guid") or guid),
         "folder": guid,
@@ -143,11 +201,7 @@ def _artifact_item(path: Path, *, kind: str, url_collection: str | None = None, 
         "author": str(meta.get("author") or ""),
         "entry": entry,
         "tags": [str(tag) for tag in tags],
-        "url": (
-            f"/dashboard-plugins/{PLUGIN_NAME}/static/apps/{guid}/{entry}"
-            if kind == "app"
-            else f"/dashboard-plugins/{PLUGIN_NAME}/dist/{url_collection or 'sessions'}/{guid}/{entry}"
-        ),
+        "url": url,
     }
     if kind == "app":
         server = meta.get("server") if isinstance(meta.get("server"), dict) else {}
@@ -313,6 +367,13 @@ async def get_app_bridge() -> FileResponse:
 @router.get("/static/apps/{guid}/{file_path:path}")
 async def get_app_static_file(guid: str, file_path: str) -> FileResponse:
     app_dir, _ = _resolve_app_dir(guid)
+    target = _safe_file_in_dir(app_dir, file_path)
+    return FileResponse(target)
+
+
+@router.get("/static/archive/apps/{guid}/{file_path:path}")
+async def get_archived_app_static_file(guid: str, file_path: str) -> FileResponse:
+    app_dir, _ = _resolve_app_dir(guid, archived=True)
     target = _safe_file_in_dir(app_dir, file_path)
     return FileResponse(target)
 

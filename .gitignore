@@ -1,35 +1,7 @@
-# Python bytecode / caches
 __pycache__/
 *.py[cod]
-*$py.class
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# macOS / editor noise
 .DS_Store
-.AppleDouble
-.LSOverride
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
 
-# Node / frontend build scratch, if used while iterating
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Runtime/generated app state. Keep app source (index.html, manifest.json,
-# server.py, assets) in git, but do not commit per-user mutable data.
+dashboard/__pycache__/
+dashboard/dist/user-apps/
 dashboard/dist/apps/*/data/
-
-# Local archives/backups created during manual plugin iteration
-*.bak
-*.tmp
-*.log

@@ -1,11 +1,102 @@
 window.AIApps = window.AIApps || (function () {
   let seq = 0;
   const pending = new Map();
+  const TOKEN_KEY = "ai-apps.sessionToken";
+  const TOKEN_UPDATED_KEY = "ai-apps.sessionTokenUpdatedAt";
+  const SESSION_HEADER = "X-Hermes-Session-Token";
 
   function rpcPath(guid, functionName) {
-    return "/dashboard-plugins/ai-apps/rpc/" +
-      encodeURIComponent(guid) + "/" + encodeURIComponent(functionName);
+    return "/api/plugins/ai-apps/apps/" +
+      encodeURIComponent(guid) + "/rpc/" + encodeURIComponent(functionName);
   }
+
+  function currentPathWithHash() {
+    return window.location.pathname + window.location.search + window.location.hash;
+  }
+
+  function authBounceUrl() {
+    return "/ai-apps?auth=1&return=" + encodeURIComponent(currentPathWithHash());
+  }
+
+  function cacheToken(token) {
+    if (!token || typeof token !== "string") return "";
+    try {
+      window.localStorage.setItem(TOKEN_KEY, token);
+      window.localStorage.setItem(TOKEN_UPDATED_KEY, new Date().toISOString());
+    } catch (_) {}
+    return token;
+  }
+
+  function cachedToken() {
+    if (typeof window.__HERMES_SESSION_TOKEN__ === "string" && window.__HERMES_SESSION_TOKEN__) {
+      return cacheToken(window.__HERMES_SESSION_TOKEN__);
+    }
+    try {
+      return window.localStorage.getItem(TOKEN_KEY) || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function parseTokenFromDashboardHtml(html) {
+    if (!html || typeof html !== "string") return "";
+    const match = html.match(/window\.__HERMES_SESSION_TOKEN__\s*=\s*(['"])(.*?)\1/);
+    if (!match) return "";
+    try {
+      return JSON.parse(match[1] + match[2] + match[1]);
+    } catch (_) {
+      return match[2] || "";
+    }
+  }
+
+  async function discoverSessionTokenSilently() {
+    const existing = cachedToken();
+    if (existing) return existing;
+    try {
+      const response = await fetch("/ai-apps?auth=1&probe=1", {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Accept": "text/html" },
+      });
+      if (!response.ok) return "";
+      const token = parseTokenFromDashboardHtml(await response.text());
+      return cacheToken(token);
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function clearCachedToken() {
+    try {
+      window.localStorage.removeItem(TOKEN_KEY);
+      window.localStorage.removeItem(TOKEN_UPDATED_KEY);
+    } catch (_) {}
+  }
+
+  function sendTokenToServiceWorker(token) {
+    if (!token || !("serviceWorker" in navigator)) return;
+    const message = { source: "ai-apps-app", type: "session-token", token: token };
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage(message);
+    }
+    navigator.serviceWorker.ready.then(function (registration) {
+      const worker = registration.active || registration.waiting || registration.installing;
+      if (worker) worker.postMessage(message);
+    }).catch(function () {});
+  }
+
+  function registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    const token = cachedToken();
+    navigator.serviceWorker.register("/dashboard-plugins/ai-apps/dist/ai-apps-sw.js", {
+      scope: "/dashboard-plugins/ai-apps/dist/",
+    }).then(function () {
+      sendTokenToServiceWorker(token);
+    }).catch(function () {});
+  }
+
+  registerServiceWorker();
 
   window.addEventListener("message", function (event) {
     const message = event.data || {};
@@ -52,13 +143,22 @@ window.AIApps = window.AIApps || (function () {
     });
   }
 
+  function bounceForAuth() {
+    if (window.location.pathname === "/ai-apps") return;
+    window.location.replace(authBounceUrl());
+  }
+
   async function directFetchRpc(functionName, payload, options) {
     const guid = options.guid || window.AI_APPS_GUID || window.UI_PLAYGROUND_GUID;
     if (!guid) throw new Error("Missing AI_APPS_GUID for direct RPC");
+    let token = await discoverSessionTokenSilently();
+    if (token) sendTokenToServiceWorker(token);
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers[SESSION_HEADER] = token;
     const response = await fetch(rpcPath(guid, functionName), {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify(payload == null ? {} : payload),
     });
     let data = null;
@@ -66,6 +166,11 @@ window.AIApps = window.AIApps || (function () {
     if (text) {
       try { data = JSON.parse(text); }
       catch (_) { data = { ok: false, error: text }; }
+    }
+    if (response.status === 401) {
+      clearCachedToken();
+      bounceForAuth();
+      throw new Error("AI Apps authorization required; redirecting to /ai-apps.");
     }
     if (!response.ok) {
       const detail = data && (data.detail || data.error);
@@ -82,7 +187,7 @@ window.AIApps = window.AIApps || (function () {
     if (parentBridgeAvailable()) {
       return postMessageRpc(window.parent, functionName, payload, options);
     }
-    if (openerBridgeAvailable() && options.preferOpener) {
+    if (openerBridgeAvailable()) {
       return postMessageRpc(window.opener, functionName, payload, options);
     }
     return directFetchRpc(functionName, payload, options);

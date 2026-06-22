@@ -30,6 +30,9 @@
     return "static";
   }
 
+  const TOKEN_KEY = "ai-apps.sessionToken";
+  const TOKEN_UPDATED_KEY = "ai-apps.sessionTokenUpdatedAt";
+
   function matches(item, query) {
     if (!query) return true;
     const haystack = [
@@ -47,6 +50,34 @@
     return haystack.includes(query.toLowerCase());
   }
 
+  function mirrorDashboardSessionToken() {
+    const token = typeof window.__HERMES_SESSION_TOKEN__ === "string" ? window.__HERMES_SESSION_TOKEN__ : "";
+    if (!token) return false;
+    try {
+      window.localStorage.setItem(TOKEN_KEY, token);
+      window.localStorage.setItem(TOKEN_UPDATED_KEY, new Date().toISOString());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function safeReturnPath(raw) {
+    if (!raw) return "";
+    try {
+      const url = new URL(raw, window.location.origin);
+      if (url.origin !== window.location.origin) return "";
+      const path = url.pathname;
+      const allowed = path.startsWith("/dashboard-plugins/ai-apps/dist/apps/") ||
+        path.startsWith("/dashboard-plugins/ai-apps/dist/user-apps/") ||
+        path.startsWith("/api/plugins/ai-apps/static/apps/");
+      if (!allowed) return "";
+      return path + url.search + url.hash;
+    } catch (_) {
+      return "";
+    }
+  }
+
   function normalizeItems(data, collection, archived) {
     const raw = data && Array.isArray(data.items) ? data.items : [];
     return raw.map(function (item) {
@@ -61,6 +92,8 @@
 
   function AIAppsPage() {
     const initialParams = new URLSearchParams(window.location.search);
+    const authReturnPath = safeReturnPath(initialParams.get("return") || "");
+    const authBounce = initialParams.get("auth") === "1" && !!authReturnPath;
     const initialTarget = initialParams.get("item") || initialParams.get("app") || initialParams.get("artifact") || initialParams.get("guid") || "";
     const initialFullView = initialParams.get("view") === "full";
 
@@ -76,6 +109,7 @@
     const [fullView, setFullView] = useState(initialFullView);
     const [viewMode, setViewMode] = useState("active");
     const frameRef = useRef(null);
+    const fullWindowRef = useRef(null);
 
     const load = React.useCallback(function () {
       setLoading(true);
@@ -113,9 +147,24 @@
     useEffect(function () { load(); }, [viewMode]);
 
     useEffect(function () {
+      mirrorDashboardSessionToken();
+      if (authBounce && authReturnPath) {
+        window.location.replace(authReturnPath);
+      }
+    }, []);
+
+    useEffect(function () {
+      if (!fullView || !selectedUrl) return;
+      window.location.replace(new URL(selectedUrl, window.location.origin).toString());
+    }, [fullView, selectedUrl]);
+
+    useEffect(function () {
       function onMessage(event) {
         const frame = frameRef.current;
-        if (!frame || event.source !== frame.contentWindow) return;
+        const fullWindow = fullWindowRef.current;
+        const fromFrame = !!(frame && event.source === frame.contentWindow);
+        const fromFullWindow = !!(fullWindow && !fullWindow.closed && event.source === fullWindow);
+        if (!fromFrame && !fromFullWindow) return;
         const message = event.data || {};
         if (!message || (message.source !== "ai-apps-app" && message.source !== "ui-playground-app") || message.type !== "rpc") return;
         const id = message.id || String(Date.now());
@@ -169,7 +218,7 @@
 
     function openFull() {
       const url = directFullUrl();
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      if (url) fullWindowRef.current = window.open(url, "_blank");
     }
 
     function exitFull() {
@@ -181,7 +230,7 @@
 
     function copyUrl() {
       if (!selectedUrl || !navigator.clipboard) return;
-      const absolute = new URL(selectedUrl, window.location.origin).toString();
+      const absolute = directFullUrl();
       navigator.clipboard.writeText(absolute).catch(function () {});
     }
 
@@ -251,6 +300,15 @@
           disabled,
           onClick: function (event) { event.stopPropagation(); runItemAction(item, "archive"); },
         }, busyAction === "archive:" + slug ? "Archiving…" : "Archive")
+      );
+    }
+
+    if (authBounce) {
+      return h("div", { className: "ai-apps-root ai-apps-auth-bounce", "aria-live": "polite" },
+        h("section", { className: "ai-apps-card" },
+          h("h3", null, "Opening AI App…"),
+          h("p", null, "Authorizing the standalone app and returning immediately.")
+        )
       );
     }
 
