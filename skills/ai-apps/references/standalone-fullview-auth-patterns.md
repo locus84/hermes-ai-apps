@@ -92,9 +92,17 @@ Do not share raw session tokens. Another authorized browser/user must still have
 - `HERMES_DASHBOARD_SESSION_TOKEN` pinned to a strong random value: improves restart/bookmark UX because cached tokens survive dashboard restart. Treat it as a long-lived bearer secret and rotate deliberately.
 - Static HTML/JS token bake-in: avoid; it turns public static files into bearer secret carriers and goes stale after token rotation.
 
+## Commit hygiene for this pattern
+
+When committing the plugin implementation, include source/runtime support files and exclude generated state:
+
+- Commit: `dashboard/dist/ai-apps-sw.js`, `dashboard/dist/app-bridge.js`, `dashboard/dist/index.js`, `dashboard/plugin_api.py`, relevant skill/reference docs, and `.gitignore` updates.
+- Do not commit: `dashboard/dist/user-apps/` mirrors generated from `~/.hermes/ai-apps/apps`, `dashboard/dist/apps/*/data/` demo state, `__pycache__/`, or `.pyc` files.
+- User-app mirror generation is runtime behavior in `plugin_api.py`; the repository should not carry a stale mirror of a local user's app.
+
 ## UX and security tradeoffs
 
-- First-time cold load must do a one-time auth bounce. Make this automatic and brief; if it loops, show a clear “Open `/ai-apps` once to authorize AI Apps RPC” action.
+- First-time cold load should first try the silent same-origin HTML probe; visible `/ai-apps?auth=1&return=...` bounce is only fallback. If it loops, show a clear “Open `/ai-apps` once to authorize AI Apps RPC” action.
 - `127.0.0.1` links are only meaningful on the same machine; use the active dashboard origin (for example Tailscale hostname) when sharing remotely.
 - Browser true fullscreen (`requestFullscreen`) still needs a user gesture; a link can provide full-page layout/PWA standalone display but cannot force OS/browser fullscreen.
 - Same-origin XSS can steal or use the token. This risk already exists for the dashboard bundle; reduce it by keeping apps self-contained, avoiding external scripts, and limiting token storage to the narrowest persistence that satisfies bookmarks.
