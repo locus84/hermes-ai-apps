@@ -42,6 +42,7 @@ Use the existing authenticated API, but make standalone app fetches attach the d
    - `fetch('/ai-apps?auth=1&probe=1', { credentials: 'same-origin' })`
    - parses the dashboard-injected `window.__HERMES_SESSION_TOKEN__` from the returned HTML without navigating
    - stores it in AI Apps-owned same-origin storage (prefer IndexedDB/localStorage for bookmark persistence; sessionStorage is safer but fails new-tab/bookmark persistence)
+   - exposes `window.AIApps.prewarmAuth({ forceRefresh?: boolean })`, returning a boolean, so apps can prewarm token + Service Worker state before app-to-app navigation
 3. `/ai-apps` dashboard page remains a visible fallback preauth launcher:
    - reads the dashboard session token exposed to the dashboard bundle
    - must not redirect when `probe=1`, even if `auth=1` and `return=...` are present; probe requests are HTML reads for token extraction

@@ -199,6 +199,20 @@ Direct standalone URLs should be public dashboard-plugin static paths, not the c
 
 Never use `/ai-apps?item=<app-name>&view=full#...` for app-to-app deep links; it is only a compatibility redirect route and can briefly show the launcher or lose fragment state. The direct standalone route relies on the dashboard's normal same-origin session boundary (for example, loopback or Tailscale access) and the bridge's silent token probe/retry behavior.
 
+For app-to-app navigation, prewarm auth before changing pages to avoid a stale/no-token load from falling through to visible auth bounce:
+
+```javascript
+await window.AIApps.prewarmAuth();
+window.location.href = "/dashboard-plugins/ai-apps/dist/user-apps/<target-app>/index.html#...";
+```
+
+For hover/focus prewarm on links:
+
+```javascript
+link.addEventListener("pointerenter", () => window.AIApps.prewarmAuth());
+link.addEventListener("focus", () => window.AIApps.prewarmAuth());
+```
+
 ## Archive / delete behavior
 
 When maintaining the AI Apps dashboard, prefer a two-step destructive workflow:
@@ -276,13 +290,14 @@ If the dashboard is running on a different host/port, replace `http://127.0.0.1:
 
 ## Notes for agents
 
-- Repository examples live under `samples/apps/*` and `samples/sessions/*`; do not leave demo apps in active `dashboard/dist/apps` or `dashboard/dist/sessions` scan roots unless you intentionally want them bundled into the running gallery. For reference serverless RPC implementation, inspect `samples/README.md`, `samples/apps/rpc-counter-demo/`, or `samples/apps/sample-rpc/`.
+- Repository examples live under `samples/apps/*` and `samples/sessions/*`; do not leave demo apps in active `dashboard/dist/apps` or `dashboard/dist/sessions` scan roots unless you intentionally want them bundled into the running gallery. When the user asks whether samples are “uploaded” or wants reference examples, keep curated examples in `samples/`, not live scan roots, and point future agents to `samples/README.md`, `samples/apps/rpc-counter-demo/`, or `samples/apps/sample-rpc/` for serverless RPC implementation patterns.
 - The AI Apps plugin dynamically scans both `~/.hermes/plugins/ai-apps/dashboard/dist/apps/*/manifest.json` and `~/.hermes/ai-apps/apps/*/manifest.json` through `/api/plugins/ai-apps/apps`. It also displays legacy `dist/sessions/*/manifest.json` entries for compatibility; new generated work should use `~/.hermes/ai-apps/apps/<app-name>/`.
 - If `plugin_api.py` itself was added or changed, restart `hermes dashboard` so the FastAPI routes are remounted. Adding new app folders does not require restart.
 - When verifying plugin API changes outside the dashboard process, use the Hermes runtime Python (`~/.hermes/hermes-agent/venv/bin/python`) so FastAPI and Hermes dependencies are available. If importing `plugin_api.py` via `importlib.util.spec_from_file_location`, insert the module into `sys.modules[spec.name]` before `exec_module`; dataclasses used by `plugin_api.py` expect their module to be registered.
 - After restart, a direct unauthenticated `curl` to `/api/plugins/ai-apps/...` may return `401` because dashboard plugin APIs are session-protected. Treat `lsof`/process readiness and browser-authenticated dashboard checks as the health signal; do not mistake unauthenticated `401` for plugin startup failure.
 - The dashboard iframe uses a sandbox. Build apps that work as standalone static pages; apps that need backend logic should use the postMessage RPC bridge.
-- Current standalone full-view implementation is core-free: `dashboard/dist/index.js` mirrors `window.__HERMES_SESSION_TOKEN__` into AI Apps localStorage, treats `/ai-apps?auth=1&probe=1` as a silent token probe that must not redirect, and handles visible `/ai-apps?auth=1&return=<same-origin-app-url>` by immediately `location.replace`ing back; `dashboard/dist/app-bridge.js` first tries a silent same-origin `fetch('/ai-apps?auth=1&probe=1')`, parses the injected `window.__HERMES_SESSION_TOKEN__` from the returned HTML without navigating, caches it, registers `dashboard/dist/ai-apps-sw.js`, sends it the cached token, adds `X-Hermes-Session-Token` on direct RPC fetches, and on 401 clears stale cache, force-refreshes the token through the silent probe, retries the RPC once, then only falls back to visible `/ai-apps` bounce if the retry still cannot authorize. `plugin_api.py` mirrors user-app static files (excluding `server.py`, `data`, dotfiles, `__pycache__`) into `dashboard/dist/user-apps/<app>/` so user apps also get public `/dashboard-plugins/...` bookmark URLs while RPC still resolves against the original user app root.
+- Current standalone full-view implementation is core-free: `dashboard/dist/index.js` mirrors `window.__HERMES_SESSION_TOKEN__` into AI Apps localStorage, treats `/ai-apps?auth=1&probe=1` as a silent token probe that must not redirect, and handles visible `/ai-apps?auth=1&return=<same-origin-app-url>` by immediately `location.replace`ing back; `dashboard/dist/app-bridge.js` first tries a silent same-origin `fetch('/ai-apps?auth=1&probe=1')`, parses the injected `window.__HERMES_SESSION_TOKEN__` from the returned HTML without navigating, caches it, exposes `window.AIApps.prewarmAuth()` for app-to-app navigation prewarm, registers `dashboard/dist/ai-apps-sw.js`, sends it the cached token, adds `X-Hermes-Session-Token` on direct RPC fetches, and on 401 clears stale cache, force-refreshes the token through the silent probe, retries the RPC once, then only falls back to visible `/ai-apps` bounce if the retry still cannot authorize. `plugin_api.py` mirrors user-app static files (excluding `server.py`, `data`, dotfiles, `__pycache__`) into `dashboard/dist/user-apps/<app>/` so user apps also get public `/dashboard-plugins/...` bookmark URLs while RPC still resolves against the original user app root.
 - Commit hygiene for AI Apps plugin changes: do not commit runtime-generated public user-app mirrors (`dashboard/dist/user-apps/`), per-demo app state (`dashboard/dist/apps/*/data/`), or `__pycache__`; add/maintain `.gitignore` entries before staging. Commit source/runtime support files such as `dashboard/dist/ai-apps-sw.js`, bridge/dashboard JS, `plugin_api.py`, and skill references.
 - For standalone full-view deployment without Hermes core changes, including Service Worker header injection, preauth/auth-bounce launcher links, cached dashboard session tokens, stable bookmark/share-link shape, commit hygiene, and why `/dashboard-plugins/...` cannot directly run RPC today, see `references/standalone-fullview-auth-patterns.md`.
+- For app-to-app direct URL navigation, `/ai-apps?item=...&view=full#...` avoidance, stale token 401 retry flow, and `window.AIApps.prewarmAuth()` usage/verification, see `references/app-to-app-navigation-auth.md`.
 - For RPC troubleshooting, obsolete bridge protocol migration, and context compatibility details, see `references/ai-apps-rpc-debugging.md`.

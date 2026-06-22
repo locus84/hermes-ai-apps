@@ -98,6 +98,14 @@ window.AIApps = window.AIApps || (function () {
 
   registerServiceWorker();
 
+  async function prewarmAuth(options) {
+    options = options || {};
+    const token = await discoverSessionTokenSilently(!!options.forceRefresh);
+    if (!token) return false;
+    sendTokenToServiceWorker(token);
+    return true;
+  }
+
   window.addEventListener("message", function (event) {
     const message = event.data || {};
     if ((message.source !== "ai-apps-host" && message.source !== "ui-playground-host") || message.type !== "rpc-result") return;
@@ -217,7 +225,7 @@ window.AIApps = window.AIApps || (function () {
     return directFetchRpc(functionName, payload, options);
   }
 
-  return { rpc: rpc };
+  return { rpc: rpc, prewarmAuth: prewarmAuth };
 })();
 
 window.UIPlayground = window.UIPlayground || window.AIApps;
