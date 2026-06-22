@@ -51,7 +51,7 @@
 
     async function rpc(functionName, payload) {
       if (!window.AIApps || typeof window.AIApps.rpc !== 'function') {
-        throw new Error('RPC bridge not found. Open this app through /ai-apps?item=rpc-counter-demo&view=full.');
+        throw new Error('RPC bridge not found. Open this app through the AI Apps dashboard preview or a direct standalone URL under /dashboard-plugins/ai-apps/dist/apps/.');
       }
       return window.AIApps.rpc(functionName, payload || {}, { guid: 'rpc-counter-demo' });
     }

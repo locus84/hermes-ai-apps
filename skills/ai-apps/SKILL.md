@@ -29,7 +29,7 @@ Create new user apps under:
 ~/.hermes/ai-apps/apps/<app-name>/
 ```
 
-The plugin also scans bundled/plugin-owned apps under `~/.hermes/plugins/ai-apps/dashboard/dist/apps/<app-name>/` for demos and packaged examples, but normal generated apps should live in the user app store above so removing/reinstalling the plugin does not delete them.
+The plugin scans bundled/plugin-owned apps under `~/.hermes/plugins/ai-apps/dashboard/dist/apps/<app-name>/` when present, but repository examples should live under `samples/apps/<app-name>/` instead of active dashboard scan roots. Normal generated apps should live in the user app store above so removing/reinstalling the plugin does not delete them.
 
 Canonical plugin identity is `ai-apps` everywhere: plugin folder `~/.hermes/plugins/ai-apps`, user app store `~/.hermes/ai-apps/apps`, dashboard route `/ai-apps`, API prefix `/api/plugins/ai-apps`, static prefix `/api/plugins/ai-apps/static/apps`, and JS bridge globals `AIApps` / `AI_APPS_GUID`. Do not create new `ui-playground` paths or docs; keep old `UIPlayground` / `UI_PLAYGROUND_GUID` references only as compatibility aliases for existing apps.
 
@@ -184,10 +184,20 @@ window.addEventListener("message", (event) => {
 
 RPC works in two modes:
 
-1. Inside the AI Apps dashboard tab or dashboard-hosted full route (`/ai-apps?item=<app-name>&view=full`), `app-bridge.js` uses parent `postMessage` and the plugin SDK.
-2. In a direct static full page (`/api/plugins/ai-apps/static/apps/<app-name>/index.html`), `app-bridge.js` falls back to same-origin direct fetch against `/api/plugins/ai-apps/apps/<app-name>/rpc/<function>`.
+1. Inside the AI Apps dashboard preview iframe, `app-bridge.js` uses parent `postMessage` and the plugin SDK.
+2. In a direct standalone static page, `app-bridge.js` falls back to same-origin direct fetch against `/api/plugins/ai-apps/apps/<app-name>/rpc/<function>` with AI Apps session-token handling.
 
-The direct route intentionally uses the plugin API static endpoint instead of a filesystem symlink, because `plugin_api.py` resolves app names only under the allowlisted plugin/user roots before serving files. It relies on the dashboard's normal same-origin session boundary (for example, loopback or Tailscale access).
+Direct standalone URLs should be public dashboard-plugin static paths, not the compatibility `/ai-apps?item=...&view=full` launcher:
+
+```text
+# plugin-bundled app
+/dashboard-plugins/ai-apps/dist/apps/<app-name>/index.html#...
+
+# user app mirror generated from ~/.hermes/ai-apps/apps/<app-name>
+/dashboard-plugins/ai-apps/dist/user-apps/<app-name>/index.html#...
+```
+
+Never use `/ai-apps?item=<app-name>&view=full#...` for app-to-app deep links; it is only a compatibility redirect route and can briefly show the launcher or lose fragment state. The direct standalone route relies on the dashboard's normal same-origin session boundary (for example, loopback or Tailscale access) and the bridge's silent token probe/retry behavior.
 
 ## Archive / delete behavior
 
@@ -214,6 +224,13 @@ For a standalone AI Apps plugin repo, make the repository root installable as th
 
 ```text
 README.md
+samples/
+  apps/
+    rpc-counter-demo/
+      index.html
+      manifest.json
+      server.py
+  sessions/
 dashboard/
   manifest.json
   plugin_api.py
@@ -223,8 +240,9 @@ dashboard/
     index.js
     style.css
     app-bridge.js
-    apps/
-    sessions/
+    ai-apps-sw.js
+    apps/          # active packaged apps only; keep examples in samples/apps
+    sessions/      # active legacy static artifacts only; keep examples in samples/sessions
     archive/
 ```
 
@@ -258,6 +276,7 @@ If the dashboard is running on a different host/port, replace `http://127.0.0.1:
 
 ## Notes for agents
 
+- Repository examples live under `samples/apps/*` and `samples/sessions/*`; do not leave demo apps in active `dashboard/dist/apps` or `dashboard/dist/sessions` scan roots unless you intentionally want them bundled into the running gallery. For reference serverless RPC implementation, inspect `samples/README.md`, `samples/apps/rpc-counter-demo/`, or `samples/apps/sample-rpc/`.
 - The AI Apps plugin dynamically scans both `~/.hermes/plugins/ai-apps/dashboard/dist/apps/*/manifest.json` and `~/.hermes/ai-apps/apps/*/manifest.json` through `/api/plugins/ai-apps/apps`. It also displays legacy `dist/sessions/*/manifest.json` entries for compatibility; new generated work should use `~/.hermes/ai-apps/apps/<app-name>/`.
 - If `plugin_api.py` itself was added or changed, restart `hermes dashboard` so the FastAPI routes are remounted. Adding new app folders does not require restart.
 - When verifying plugin API changes outside the dashboard process, use the Hermes runtime Python (`~/.hermes/hermes-agent/venv/bin/python`) so FastAPI and Hermes dependencies are available. If importing `plugin_api.py` via `importlib.util.spec_from_file_location`, insert the module into `sys.modules[spec.name]` before `exec_module`; dataclasses used by `plugin_api.py` expect their module to be registered.
