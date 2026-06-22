@@ -144,7 +144,7 @@ def _artifact_item(path: Path, *, kind: str, url_collection: str | None = None, 
         "entry": entry,
         "tags": [str(tag) for tag in tags],
         "url": (
-            f"/api/plugins/{PLUGIN_NAME}/static/apps/{guid}/{entry}"
+            f"/dashboard-plugins/{PLUGIN_NAME}/static/apps/{guid}/{entry}"
             if kind == "app"
             else f"/dashboard-plugins/{PLUGIN_NAME}/dist/{url_collection or 'sessions'}/{guid}/{entry}"
         ),

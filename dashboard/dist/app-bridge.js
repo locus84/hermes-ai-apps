@@ -3,8 +3,8 @@ window.AIApps = window.AIApps || (function () {
   const pending = new Map();
 
   function rpcPath(guid, functionName) {
-    return "/api/plugins/ai-apps/apps/" +
-      encodeURIComponent(guid) + "/rpc/" + encodeURIComponent(functionName);
+    return "/dashboard-plugins/ai-apps/rpc/" +
+      encodeURIComponent(guid) + "/" + encodeURIComponent(functionName);
   }
 
   window.addEventListener("message", function (event) {
