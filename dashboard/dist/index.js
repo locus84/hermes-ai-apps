@@ -93,7 +93,8 @@
   function AIAppsPage() {
     const initialParams = new URLSearchParams(window.location.search);
     const authReturnPath = safeReturnPath(initialParams.get("return") || "");
-    const authBounce = initialParams.get("auth") === "1" && !!authReturnPath;
+    const authProbe = initialParams.get("probe") === "1";
+    const authBounce = initialParams.get("auth") === "1" && !authProbe && !!authReturnPath;
     const initialTarget = initialParams.get("item") || initialParams.get("app") || initialParams.get("artifact") || initialParams.get("guid") || "";
     const initialFullView = initialParams.get("view") === "full";
 
@@ -155,7 +156,9 @@
 
     useEffect(function () {
       if (!fullView || !selectedUrl) return;
-      window.location.replace(new URL(selectedUrl, window.location.origin).toString());
+      const target = new URL(selectedUrl, window.location.origin);
+      if (!target.hash && window.location.hash) target.hash = window.location.hash;
+      window.location.replace(target.toString());
     }, [fullView, selectedUrl]);
 
     useEffect(function () {
@@ -199,15 +202,8 @@
       const slug = itemSlug(item);
       setSelectedUrl(item.url);
       setSelectedSlug(slug);
-      if (fullView && slug) {
-        const url = new URL(window.location.href);
-        url.searchParams.set("item", slug);
-        url.searchParams.set("view", "full");
-        url.searchParams.delete("mode");
-        url.searchParams.delete("guid");
-        url.searchParams.delete("app");
-        url.searchParams.delete("artifact");
-        window.history.replaceState(null, "", url.toString());
+      if (fullView && item.url) {
+        window.location.replace(new URL(item.url, window.location.origin).toString());
       }
     }
 

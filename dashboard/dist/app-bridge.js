@@ -49,9 +49,9 @@ window.AIApps = window.AIApps || (function () {
     }
   }
 
-  async function discoverSessionTokenSilently() {
+  async function discoverSessionTokenSilently(forceRefresh) {
     const existing = cachedToken();
-    if (existing) return existing;
+    if (existing && !forceRefresh) return existing;
     try {
       const response = await fetch("/ai-apps?auth=1&probe=1", {
         method: "GET",
@@ -148,30 +148,17 @@ window.AIApps = window.AIApps || (function () {
     window.location.replace(authBounceUrl());
   }
 
-  async function directFetchRpc(functionName, payload, options) {
-    const guid = options.guid || window.AI_APPS_GUID || window.UI_PLAYGROUND_GUID;
-    if (!guid) throw new Error("Missing AI_APPS_GUID for direct RPC");
-    let token = await discoverSessionTokenSilently();
-    if (token) sendTokenToServiceWorker(token);
-    const headers = { "Content-Type": "application/json" };
-    if (token) headers[SESSION_HEADER] = token;
-    const response = await fetch(rpcPath(guid, functionName), {
-      method: "POST",
-      credentials: "include",
-      headers: headers,
-      body: JSON.stringify(payload == null ? {} : payload),
-    });
+  async function readRpcResponse(response) {
     let data = null;
     const text = await response.text();
     if (text) {
       try { data = JSON.parse(text); }
       catch (_) { data = { ok: false, error: text }; }
     }
-    if (response.status === 401) {
-      clearCachedToken();
-      bounceForAuth();
-      throw new Error("AI Apps authorization required; redirecting to /ai-apps.");
-    }
+    return data;
+  }
+
+  function rpcResultOrThrow(response, data) {
     if (!response.ok) {
       const detail = data && (data.detail || data.error);
       throw new Error(typeof detail === "string" ? detail : (response.status + ": " + response.statusText));
@@ -180,6 +167,43 @@ window.AIApps = window.AIApps || (function () {
       throw new Error(data.error || "RPC failed");
     }
     return data && Object.prototype.hasOwnProperty.call(data, "result") ? data.result : data;
+  }
+
+  async function directFetchRpc(functionName, payload, options) {
+    const guid = options.guid || window.AI_APPS_GUID || window.UI_PLAYGROUND_GUID;
+    if (!guid) throw new Error("Missing AI_APPS_GUID for direct RPC");
+    const body = JSON.stringify(payload == null ? {} : payload);
+    let token = await discoverSessionTokenSilently(false);
+    if (token) sendTokenToServiceWorker(token);
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers[SESSION_HEADER] = token;
+    const requestOptions = {
+      method: "POST",
+      credentials: "include",
+      headers: headers,
+      body: body,
+    };
+    let response = await fetch(rpcPath(guid, functionName), requestOptions);
+    let data = await readRpcResponse(response);
+
+    if (response.status === 401 && token) {
+      clearCachedToken();
+      token = await discoverSessionTokenSilently(true);
+      if (token) {
+        sendTokenToServiceWorker(token);
+        headers[SESSION_HEADER] = token;
+        response = await fetch(rpcPath(guid, functionName), requestOptions);
+        data = await readRpcResponse(response);
+        if (response.ok) return rpcResultOrThrow(response, data);
+      }
+    }
+
+    if (response.status === 401) {
+      clearCachedToken();
+      bounceForAuth();
+      throw new Error("AI Apps authorization required; redirecting to /ai-apps.");
+    }
+    return rpcResultOrThrow(response, data);
   }
 
   function rpc(functionName, payload, options) {
