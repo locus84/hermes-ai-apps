@@ -310,6 +310,7 @@
                 h("span", { className: "ai-apps-pill" }, kind === "app" ? "app" : "static"),
                 item.archived ? h("span", { className: "ai-apps-pill" }, "archived") : null,
                 item.collection === "sessions" ? h("span", { className: "ai-apps-pill" }, "legacy") : null,
+                item.source ? h("span", { className: "ai-apps-pill" }, item.source === "user" ? "user app" : "plugin app") : null,
                 (item.tags || []).slice(0, 8).map(function (tag) {
                   return h("span", { className: "ai-apps-pill", key: tag }, tag);
                 }),
@@ -318,7 +319,7 @@
             );
           }) : h("div", { className: "ai-apps-card" },
             h("h3", null, loading ? "Loading…" : (viewMode === "archive" ? "Archive is empty" : "No apps yet")),
-            h("p", null, viewMode === "archive" ? "Archived apps will appear here. Delete from this view to permanently remove them." : "Create ~/.hermes/plugins/ai-apps/dashboard/dist/apps/<name>/ with index.html and manifest.json."),
+            h("p", null, viewMode === "archive" ? "Archived apps will appear here. Delete from this view to permanently remove them." : "Create ~/.hermes/ai-apps/apps/<name>/ with index.html and manifest.json. Plugin-bundled apps under dist/apps are also shown."),
             viewMode === "active" ? h("p", null, "Use a meaningful slug; for throwaways use temp-<short-topic>.") : null
           )
         ),
